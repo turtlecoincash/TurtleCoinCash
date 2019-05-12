@@ -1,87 +1,207 @@
-project(phc-winner-argon2)
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 2.6)
 
-set(ARGON2_VERSION 20171227)
-
-include_directories(include)
-
-###############
-# Conan support
-###############
-find_file(CONANBUILDINFO "conanbuildinfo.cmake" PATHS ${CMAKE_BINARY_DIR})
-if (CONANBUILDINFO)
-    message(STATUS "CONANBUILDINFO: ${CONANBUILDINFO}")
-    include(${CONANBUILDINFO})
-    message(STATUS "conan_basic_setup()")
-    conan_basic_setup()
+find_program(CCACHE_PROGRAM ccache)
+if(CCACHE_PROGRAM)
+  message(STATUS "-- Argon2: Found ccache package... Activating...")
+  set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "${CCACHE_PROGRAM}")
 endif()
 
-if(NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE Release)
-    #set(CMAKE_BUILD_TYPE Debug)
-endif()
+project(Argon2 C)
+set(ARGON2_VERSION 1.0)
+set(CMAKE_C_STANDARD 90)
+set(CMAKE_C_STANDARD_REQUIRED ON)
 
-message(STATUS "ARGON2: CMAKE_BUILD_TYPE: ${CMAKE_BUILD_TYPE}")
+include(CheckCSourceCompiles)
+find_package(Threads REQUIRED)
 
-option(MULTITHREADS "Enable multithreading" ON)
-option(TESTS        "Enable unit tests"     OFF)
-option(BENCHMARKS   "Enable benchmark"      OFF)
-option(COVERAGE     "Enable coverage"       OFF)
-option(SPECS        "Build documentation"   OFF)
-option(ARCH         "Targeted architecture" "default")
+add_library(argon2-interface INTERFACE)
+target_include_directories(argon2-interface INTERFACE
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
 
-set(ABI_VERSION 1)
+add_library(argon2-internal INTERFACE)
+target_include_directories(argon2-internal INTERFACE lib lib/blake2)
+target_link_libraries(argon2-internal INTERFACE argon2-interface)
 
-#include(CheckCCompilerFlag)
+set(ARGON2_SRC
+  lib/argon2.c
+  lib/core.c
+  lib/encoding.c
+  lib/genkat.c
+  lib/impl-select.c
+  lib/thread.c
+  lib/blake2/blake2.c
+)
 
-if ((CMAKE_CXX_COMPILER_ID MATCHES "Clang")
- OR (CMAKE_CXX_COMPILER_ID STREQUAL "GNU"))
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Werror -Wno-type-limits")
+message("-- Argon2: Processor: ${CMAKE_SYSTEM_PROCESSOR}")
+message("-- Argon2: Build Type: ${ARCH}")
 
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fvisibility=hidden")
+if((CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "AMD64") AND NOT "${ARCH}" STREQUAL "default")
+  include(CheckCXXSourceRuns)
 
-    set(CMAKE_C_FLAGS_DEBUG "-O0 -g3")
-    set(CMAKE_C_FLAGS_RELWITHDEBINFO "-O3 -g")
-    set(CMAKE_C_FLAGS_RELEASE "-O3")
+  # Check for AVX2
+  check_cxx_source_runs("
+    #include <immintrin.h>
+    int main()
+    {
+      __m256i a, b, c;
+      const int src[8] = { 1, 2, 3, 4, 5, 6, 7, 8 };
+      int dst[8];
+      a =  _mm256_loadu_si256( (__m256i*)src );
+      b =  _mm256_loadu_si256( (__m256i*)src );
+      c = _mm256_add_epi32( a, b );
+      _mm256_storeu_si256( (__m256i*)dst, c );
+      for( int i = 0; i < 8; i++ ){
+        if( ( src[i] + src[i] ) != dst[i] ){
+          return -1;
+        }
+      }
+      return 0;
+    }"
+  HAVE_AVX2_EXTENSIONS)
 
-    if (COVERAGE)
-        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} --coverage")
+  if(HAVE_AVX2_EXTENSIONS)
+    message("-- Argon2: AVX2 Extensions - Enabled")
+    add_definitions(-DHAVE_AVX2)
+    if(MSVC)
+      add_definitions(/arch:AVX2)
     endif()
-endif()
+  else()
+    message("-- Argon2: AVX2 Extensions - Disabled")
+  endif()
 
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
-if (MINGW)
-    set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+  # Check for AVX512
+  check_cxx_source_runs("
+    #include <immintrin.h>
+    int main()
+    {
+      __m512i a, b, c;
+      const int src[8] = { 1, 2, 3, 4, 5, 6, 7, 8 };
+      int dst[8];
+      a =  _mm512_loadu_si512( (__m512i*)src );
+      b =  _mm512_loadu_si512( (__m512i*)src );
+      c = _mm512_add_epi32( a, b );
+      _mm512_storeu_si512( (__m512i*)dst, c );
+      for( int i = 0; i < 8; i++ ){
+        if( ( src[i] + src[i] ) != dst[i] ){
+          return -1;
+        }
+      }
+      return 0;
+    }"
+  HAVE_AVX512F_EXTENSIONS)
+
+  if(HAVE_AVX512F_EXTENSIONS)
+    message("-- Argon2: AVX512 Extensions - Enabled")
+    add_definitions(-DHAVE_AVX512F)
+  else()
+    message("-- Argon2: AVX512 Extensions - Disabled")
+  endif()
+
+  # Check for SSE2
+  check_cxx_source_runs("
+    #include <immintrin.h>
+    int main()
+    {
+      __m128d a, b;
+      double vals[2] = {0};
+      a = _mm_loadu_pd(vals);
+      b = _mm_add_pd(a,a);
+      _mm_storeu_pd(vals,b);
+      return 0;
+    }"
+  HAVE_SSE2_EXTENSIONS)
+
+  if(HAVE_SSE2_EXTENSIONS)
+    message("-- Argon2: SSE2 Extensions - Enabled")
+    add_definitions(-DHAVE_SSE2)
+    if(MSVC)
+      add_definitions(/arch:SSE2)
+    endif()
+  else()
+    message("-- Argon2: SSE2 Extensions - Disabled")
+  endif()
+
+  # Check for SSE3
+  check_cxx_source_runs("
+    #include <immintrin.h>
+    int main()
+    {
+      __m128d a, b;
+      double vals[2] = {0};
+      a = _mm_loadu_pd(vals);
+      b = _mm_hadd_pd(a,a);
+      _mm_storeu_pd(vals, b);
+      return 0;
+    }"
+  HAVE_SSE3_EXTENSIONS)
+
+  if(HAVE_SSE3_EXTENSIONS)
+    message("-- Argon2: SSE3 Extensions - Enabled")
+    add_definitions(-DHAVE_SSE3)
+    if(MSVC)
+      add_definitions(/arch:SSE3)
+    endif()
+  else()
+    message("-- Argon2: SSE3 Extensions - Disabled")
+  endif()
+
+  # Check for XOP
+  check_cxx_source_runs("
+    #include <immintrin.h>
+    int main()
+    {
+      __m128i a, b, c;
+      const int src[8] = { 1, 2, 3, 4, 5, 6, 7, 8 };
+      a = _mm_load_si128( (__m128i*)src );
+      b = _mm_load_si128( (__m128i*)src );
+      c = _mm_roti_epi64(*a, b);
+      return 0;
+    }"
+  HAVE_XOP_EXTENSIONS)
+
+  if(HAVE_XOP_EXTENSIONS)
+    message("-- Argon2: XOP Extensions - Enabled")
+    add_definitions(-DHAVE_XOP)
+  else()
+    message("-- Argon2: XOP Extensions - Disabled")
+  endif()
+
+  list(APPEND ARGON2_SRC
+    arch/x86_64/lib/argon2-sse2.c
+    arch/x86_64/lib/argon2-ssse3.c
+    arch/x86_64/lib/argon2-xop.c
+    arch/x86_64/lib/argon2-avx2.c
+    arch/x86_64/lib/argon2-avx512f.c
+    arch/x86_64/lib/argon2-arch.c
+  )
 else()
-    set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
-endif()
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
-
-message(STATUS "ARGON2: CMAKE_INSTALL_PREFIX: ${CMAKE_INSTALL_PREFIX}")
-set (CMAKE_INSTALL_INCLUDEDIR "${CMAKE_INSTALL_PREFIX}/include")
-set (CMAKE_INSTALL_LIBDIR "${CMAKE_INSTALL_PREFIX}/lib")
-set (CMAKE_INSTALL_BINDIR "${CMAKE_INSTALL_PREFIX}/bin")
-message(STATUS "ARGON2: CMAKE_INSTALL_INCLUDEDIR: ${CMAKE_INSTALL_INCLUDEDIR}")
-message(STATUS "ARGON2: CMAKE_INSTALL_LIBDIR: ${CMAKE_INSTALL_LIBDIR}")
-message(STATUS "ARGON2: CMAKE_INSTALL_BINDIR: ${CMAKE_INSTALL_BINDIR}")
-
-add_subdirectory(src)
-#add_subdirectory(tool)
-
-#if (UNIX)
-#    add_subdirectory(man)
-#endif()
-
-if (NOT SPECS)
-    message(STATUS "ARGON2: Skipping latex documentation")
-else()
-    add_subdirectory(latex)
+  list(APPEND ARGON2_SRC
+    arch/generic/lib/argon2-arch.c
+  )
 endif()
 
-if (NOT TESTS)
-    message(STATUS "ARGON2: Skipping tests")
-else()
-    enable_testing()
-    add_subdirectory(tests)
-endif()
+add_library(argon2 STATIC ${ARGON2_SRC})
+
+target_compile_definitions(argon2
+  PUBLIC "A2_VISCTL"
+)
+
+target_link_libraries(argon2
+  PUBLIC argon2-interface ${CMAKE_THREAD_LIBS_INIT}
+  PRIVATE argon2-internal
+)
+
+set_property(TARGET argon2 PROPERTY C_STANDARD 90)
+set_property(TARGET argon2 PROPERTY VERSION ${Upstream_VERSION})
+set_property(TARGET argon2 PROPERTY SOVERSION 1)
+set_property(TARGET argon2 PROPERTY INTERFACE_ARGON2_MAJOR_VERSION 1)
+set_property(TARGET argon2 APPEND PROPERTY
+  COMPATIBLE_INTERFACE_STRING ARGON2_MAJOR_VERSION
+)
+
+install(TARGETS argon2 ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+
+install(FILES "${CMAKE_SOURCE_DIR}/include/argon2.h"
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
