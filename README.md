@@ -10,12 +10,6 @@ We will be performing a hard-fork of the TurtleCoin blockchain at block 1,800,00
 
 We will maintain the 30s block target times, the current mixin requirements, and etc. upon launch. Releases will be provided well ahead of the launch to help everyone who wishes to participate to do so.
 
-### Installing
-
-We offer binary images of the latest releases here: http://latest.turtlecoin.lol
-
-If you would like to compile yourself, read on.
-
 ### How To Compile
 
 #### Build Optimization
