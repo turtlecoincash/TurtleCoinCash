@@ -1,10 +1,14 @@
-![image](https://user-images.githubusercontent.com/34389545/35821974-62e0e25c-0a70-11e8-87dd-2cfffeb6ed47.png)
+# TurtleCoinCash
 
-#### Master Build Status
-[![Build Status](https://travis-ci.org/turtlecoin/turtlecoin.svg?branch=master)](https://travis-ci.org/turtlecoin/turtlecoin) [![Build status](https://ci.appveyor.com/api/projects/status/github/turtlecoin/turtlecoin?branch=master&svg=true)](https://ci.appveyor.com/project/RocksteadyTC/turtlecoin)
+## Mission
 
-#### Development Build Status
-[![Build Status](https://travis-ci.org/turtlecoin/turtlecoin.svg?branch=development)](https://travis-ci.org/turtlecoin/turtlecoin) [![Build status](https://ci.appveyor.com/api/projects/status/github/turtlecoin/turtlecoin?branch=development&svg=true)](https://ci.appveyor.com/project/RocksteadyTC/turtlecoin)
+To fulfill the true vision of [TurtleCoin](https://turtlecoin.lol) by returning a private, fast, and easy way to send money to friends and businesses to the community.
+
+## Launch Plans
+
+We will be performing a hard-fork of the TurtleCoin blockchain at block 1,800,000. TurtleCoinCash will split from the current TurtleCoin chain at that time. Over the coming weeks, our code base will be updated to interact with the TurtleCoin chain and upon reaching block 1,800,000 will automatically fork off to a new chain. Unlike many TurtleCoin forks, this will keep all user funds intact up to block 1,800,000 where TurtleCoinCash will start to operate on it's own.
+
+We will maintain the 30s block target times, the current mixin requirements, and etc. upon launch. Releases will be provided well ahead of the launch to help everyone who wishes to participate to do so.
 
 ### Installing
 
@@ -182,6 +186,7 @@ Hi TurtleCoin contributor, thanks for forking and sending back Pull Requests. Ex
 // Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
 // Copyright (c) 2014-2018, The Monero Project
 // Copyright (c) 2018-2019, The TurtleCoin Developers
+// Copyright (c) 2019, The TurtleCoinCash Developers
 //
 // Please see the included LICENSE file for more information.
 ```
